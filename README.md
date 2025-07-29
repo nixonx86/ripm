@@ -20,7 +20,7 @@ cargo install ripm
 ## Usage
 
 ```zsh
-rip -l <length> -H <hash> -p <path to image>
+rip <arguments>
 ```
 length is optional
 hash is your one password which will ensuere your all passwords are safe
