@@ -1,10 +1,9 @@
-use core::{hash, panic};
+use core::panic;
 use std::collections::HashMap;
-use std::env::{args, home_dir, remove_var};
-use std::fs::{self, File};
+use std::fs::File;
 use std::io::{self, prelude::*};
 use std::path::Path;
-use std::{env, option, u8, usize};
+use std::{env, u8, usize};
 
 fn remove_whitespace(s: &str) -> String{
     s.chars().filter(|c| !c.is_whitespace()).collect()
