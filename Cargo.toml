@@ -1,13 +1,13 @@
 [package]
 name = "ripm"
-version = "0.2.0"
+version = "0.2.0.1"
 edition = "2021"
 license-file = "LICENSE"
 description = "Basic password manager that stores passwords in images"
 documentation = "https://gitlab.com/nixon86/rip"
 readme = "README.md"
-homepage = "https://gitlab.com/nixon86/rip"
-repository = "https://gitlab.com/nixon86/rip"
+homepage = "https://gitlab.com/nixon86/ripm"
+repository = "https://gitlab.com/nixon86/ripm"
 keywords = ["password", "manager"]
 categories = ["command-line-utilities"]
 
