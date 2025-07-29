@@ -12,6 +12,11 @@ cd rip
 cargo install path=.
 ```
 
+or with crates
+```zsh
+cargo install ripm
+```
+
 ## Usage
 
 ```zsh
