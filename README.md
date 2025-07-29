@@ -7,7 +7,7 @@ Rip is a tool that stores passwords in an image
 Install manually with
 
 ```zsh
-git clone https://gitlab.com/nixon86/rip.git
+git clone https://gitlab.com/nixon86/ripm.git
 cd rip
 cargo install path=.
 ```
