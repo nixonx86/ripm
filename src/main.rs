@@ -1,10 +1,14 @@
-use core::panic;
+use core::{hash, panic};
 use std::collections::HashMap;
 use std::env::{args, home_dir, remove_var};
 use std::fs::{self, File};
 use std::io::{self, prelude::*};
 use std::path::Path;
-use std::{env, u8, usize};
+use std::{env, option, u8, usize};
+
+fn remove_whitespace(s: &str) -> String{
+    s.chars().filter(|c| !c.is_whitespace()).collect()
+}
 
 fn open_file(path: &Path) -> std::io::Result<Vec<u8>>{
     let mut file = File::open(path)?;
@@ -61,10 +65,10 @@ fn get_chars(content: Vec<u8>, length: usize, hash: Vec<u8>) -> Vec<u8>{
 }
 
 fn get_password(path: String, length: usize, hash: Vec<u8>) -> String{
-   let content = open_file(Path::new(&path)).unwrap();
-   let byte_array = get_chars(content, length, hash);
-   let s = String::from_utf8_lossy(&byte_array);
-   return s.to_string();
+    let content = open_file(Path::new(&path)).unwrap();
+    let byte_array = get_chars(content, length, hash);
+    let s = String::from_utf8_lossy(&byte_array);
+    return s.to_string();
 }
 
 fn get_length(arg: String) -> usize{
@@ -75,11 +79,17 @@ fn get_length(arg: String) -> usize{
     };
 }
 
-fn get_saved_path(shortcuts: HashMap<String, String>, key: String) -> Option<String>{
-   if shortcuts.len() > 0 {
-       return shortcuts.get(&key).cloned();
-   }
-   return None;
+fn get_saved_path(shortcuts: HashMap<String, String>, keys: Vec<String>) -> Vec<String>{
+    let mut paths: Vec<String> = vec![];
+    if shortcuts.len() > 0 {
+        for k in keys {
+            match shortcuts.get(&k) {
+                Some(v) => paths.push(remove_whitespace(v)),
+                None => println!("{} has no path", k),
+            }
+        }
+    }
+    return paths;
 }
 
 fn remove_args(mut args: Vec<String>) -> Vec<String> {
@@ -119,7 +129,6 @@ fn check_config() -> (usize, Option<String>, HashMap<String, String>){
     let tmp = String::from_utf8_lossy(&binding);
     let lines: Vec<&str> = tmp.split("\n").collect();
     let mut length: usize = 8;
-    let mut passwd_hash: String = String::new();
     let mut hash = String::new();
     let mut shortcuts: HashMap<String, String> = HashMap::new();
     for i in 0..lines.len() {
@@ -133,19 +142,36 @@ fn check_config() -> (usize, Option<String>, HashMap<String, String>){
         }
         match parts[0].trim(){
             "default_length" => length = get_length(parts[1].to_string()),
-            "default_password" => {passwd_hash = parts[1].trim().to_string(); let hash_content = open_file(&Path::new(&passwd_hash)); hash = sha256::digest(hash_content.unwrap());},
-            _ => {shortcuts.insert(parts[0].to_string(), parts[1].to_string()).unwrap();},
+            "default_password" => {let passwd_hash = parts[1].trim().to_string(); hash = String::from_utf8_lossy(&open_file(&Path::new(&passwd_hash)).unwrap()).to_string();},
+            _ => {shortcuts.insert(parts[0].to_string(), parts[1].to_string());},
 
         }
     }
+    if hash.len() > 0 {
+        let mut hash_vec: Vec<u8> = hash.as_bytes().to_vec();
+        hash_vec.remove(hash_vec.len()-1);
+        hash = String::from_utf8_lossy(&hash_vec).to_string();
+    }
     return  (length, Some(hash), shortcuts);
 
+}
+
+fn get_options(args: Vec<String>) -> Vec<String> {
+    let mut options: Vec<String> = vec![];
+    for i in 1..args.len(){
+        if args[i].as_bytes()[0] == '-' as u8{
+            break;
+        }
+        options.push(args[i].clone());
+    }
+    return options;
 }
 
 fn main() {
     let (mut length, passwd_hash, shortcuts) = check_config();
     let mut args: Vec<String> = env::args().collect();
     let mut paths: Vec<String> = Vec::new();
+    let mut hash: Vec<u8> = vec![];
     args.remove(0);
     if args.len() < 2{
         panic!("not enough argument")
@@ -157,24 +183,29 @@ fn main() {
         match args[0].as_str() {
             "-l" => length = get_length(args[1].clone()),
             "--length" => length = get_length(args[1].clone()),
-            "-p" => {paths = args.clone(); paths.remove(0);},
-            "--path" => {paths = args.clone(); paths.remove(0);},
-            "-s" => paths.push(get_saved_path(shortcuts.clone(), args[1].clone()).unwrap()),
-            "--saved" => paths.push(get_saved_path(shortcuts.clone(), args[1].clone()).unwrap()),
+            "-H" => hash = args[1].clone().as_bytes().to_vec(),
+            "--hash" => hash = args[1].clone().as_bytes().to_vec(),
+            "-p" => paths.append(&mut get_options(args.clone())),
+            "--path" => paths.append(&mut get_options(args.clone())),
+            "-s" => paths.append(&mut get_saved_path(shortcuts.clone(), get_options(args.clone()))),
+            "--saved" => paths.append(&mut get_saved_path(shortcuts.clone(), get_options(args.clone()))),
             _ => panic!("{} is unknown argument", args[0]),
         }
         args = remove_args(args);
     }
-    let mut passwd = String::new();
-    println!("please enter your password: ");
-    io::stdin().read_line(&mut passwd).expect("Failed to get password");
-    println!("Hash of the password: {}",sha256::digest(&passwd));
-    if sha256::digest(&passwd).to_string() != passwd_hash.unwrap(){
+    if hash.len() == 0 {
+        let mut passwd: String = String::new();
+        println!("please enter your password: ");
+        io::stdin().read_line(&mut passwd).expect("Failed to get password");
+        hash = passwd.as_bytes().to_vec();
+        hash.remove(hash.len()-1);
+    }
+    println!("Hash of the password: {:?}",sha256::digest(&hash));
+    if sha256::digest(&hash).to_string() != passwd_hash.unwrap(){
         println!("Your password may be wrong")
     } 
     for i in 0..paths.len(){
-        let password = get_password(paths[i].clone(), length, passwd.as_bytes().to_vec());
-        
+        let password = get_password(paths[i].clone(), length, hash.clone());
         println!("{}: {}", paths[i], password); 
     }
 }
