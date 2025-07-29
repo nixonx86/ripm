@@ -1,5 +1,5 @@
 [package]
-name = "rip"
+name = "ripm"
 version = "0.1.0"
 edition = "2021"
 license-file = "LICENSE"
@@ -12,3 +12,5 @@ keywords = ["password", "manager"]
 categories = ["command-line-utilities"]
 
 [dependencies]
+home = "0.5.11"
+sha256 = "1.6.0"
