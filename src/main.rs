@@ -5,6 +5,12 @@ use std::io::{self, prelude::*};
 use std::path::Path;
 use std::{env, u8, usize};
 
+const READ: u8 = 0;
+const WRITE: u8 = 1;
+
+const SUCSSES: &str = "succesfull";
+const FAIL: &str = "unsuccesfull";
+
 fn remove_whitespace(s: &str) -> String{
     s.chars().filter(|c| !c.is_whitespace()).collect()
 }
@@ -30,6 +36,21 @@ fn bytes_check(content: Vec<u8>,mut i: usize) -> u8{
         } else {
             return tmp;
         }
+
+    }
+}
+
+fn write_byte(content: &mut Vec<u8>,mut i: usize, byte: u8) {
+    loop {
+        let tmp = content[i];
+        if tmp < 32 || tmp > 126{
+            i += 1;
+        } else {
+            content[i] = byte;
+            println!("{}", content[i] as char);
+            return;
+        }
+
     }
 }
 
@@ -69,11 +90,68 @@ fn get_chars(content: Vec<u8>, length: usize, hash: Vec<u8>) -> Vec<u8>{
     ret_array
 }
 
-fn get_password(path: String, length: usize, hash: Vec<u8>) -> String{
+fn get_saved_password(path: String, length: usize, hash: Vec<u8>) -> String{
     let content = open_file(Path::new(&path));
     let byte_array = get_chars(content, length, hash);
     let s = String::from_utf8_lossy(&byte_array);
     s.to_string()
+}
+
+fn write_chars(content: &mut Vec<u8>, hash: Vec<u8>, desired: String) {
+    let mut tmp: usize = {
+        let mut ret: u64 = hash[0] as u64;
+        for i in 1..hash.len() {
+            ret += hash[i] as u64;
+        }
+        ret.try_into().unwrap()    };
+    let mut j: usize = 1;
+    for i in 0..desired.len() {
+        j += 1;
+        if j <= hash.len() {
+            j = 0;
+        }
+        let tmp_i: usize = hash[j].into();
+        if i%2 == 0 {
+            if tmp + tmp_i < content.len() {
+                tmp = tmp + tmp_i;
+            } else {
+                tmp = (tmp + tmp_i) % content.len();
+            }
+        } else {
+            if tmp * tmp_i < content.len() {
+                tmp = tmp * tmp_i;
+            } else {
+                tmp = (tmp * tmp_i) % content.len();
+            }
+        }
+        write_byte(content, tmp, desired.as_bytes().to_vec()[i]); 
+    }
+}
+
+fn write_password(path: String, hash: Vec<u8>, desired: String) -> &'static str{
+    let mut content = open_file(Path::new(&path));
+    write_chars(&mut content, hash.clone(), desired.clone());
+    if desired.as_bytes().to_vec() == get_chars(content.clone(), desired.len(), hash.clone()) {
+        let mut file = match File::options().write(true).open(Path::new(&path)) {
+            Ok(f) => f,
+            Err(e) => panic!("Could not open {:?}, error: {}", path, e),
+        };
+        match file.write_all(&content) {
+            Err(e) => panic!("Could not write to {:?}, error {}", path, e),
+            _ => (),
+        }
+        match file.sync_data() {
+            Err(e) => panic!("Could not write to {:?}, error {}", path, e),
+            _ => (),
+        }
+        if desired == get_saved_password(path, desired.len(), hash) {
+            SUCSSES
+        } else {
+            FAIL
+        }
+    } else {
+        FAIL
+    }
 }
 
 fn get_length(arg: String) -> usize{
@@ -95,13 +173,6 @@ fn get_saved_path(shortcuts: HashMap<String, String>, keys: Vec<String>) -> Vec<
         }
     }
     paths
-}
-
-fn remove_args(mut args: Vec<String>) -> Vec<String> {
-    for _ in 0..2 {
-        args.remove(0);
-    }
-    args
 }
 
 fn create_config() ->  bool{
@@ -163,23 +234,44 @@ fn check_config() -> (usize, Option<String>, HashMap<String, String>){
 
 }
 
-fn get_options(args: Vec<String>) -> Vec<String> {
+fn get_options(args: &mut Vec<String>) -> Vec<String> {
     let mut options: Vec<String> = vec![];
-    for i in 1..args.len(){
-        if args[i].as_bytes()[0] == '-' as u8{
+    for _ in 1..args.len(){
+        if args[1].as_bytes()[0] == '-' as u8{
             break;
         }
-        options.push(args[i].clone());
+        options.push(args[1].clone());
+        args.remove(1);
     }
+    args.remove(0);
     return options;
 }
 
-fn sanitize_string(s: String) -> Vec<u8> {
+fn sanitize_string(s: &mut String) -> Vec<u8> {
     let mut v = s.as_bytes().to_vec();
     if v[v.len()-1] == 10 {
         v.remove(v.len()-1);
     }
-    v
+    *s = String::from_utf8(v).unwrap();
+    s.as_bytes().to_vec()
+}
+
+fn password_check(hash: Option<&str>, mut password: Vec<u8>) -> Vec<u8>{
+    if password.len() == 0 {
+        let mut passwd: String = String::new();
+        println!("please enter your password: ");
+        io::stdin().read_line(&mut passwd).expect("Failed to get password");
+        password = sanitize_string(&mut passwd);
+    }
+    if hash != None {
+        if sha256::digest(&password).to_string() != hash.unwrap(){
+            println!("Your password may be wrong")
+        } 
+    }
+    else {
+        println!("Hash of the password: {:?}",sha256::digest(hash.unwrap()));
+    }
+    password
 }
 
 fn main() {
@@ -187,6 +279,7 @@ fn main() {
     let mut args: Vec<String> = env::args().collect();
     let mut paths: Vec<String> = Vec::new();
     let mut hash: Vec<u8> = vec![];
+    let mut operation: u8 = 255;
     args.remove(0);
     if args.len() < 2{
         panic!("not enough argument")
@@ -196,34 +289,36 @@ fn main() {
             break;
         }
         match args[0].as_str() {
-            "-l" => length = get_length(args[1].clone()),
-            "--length" => length = get_length(args[1].clone()),
-            "-H" => hash = sanitize_string(args[1].clone()),
-            "--hash" => hash = sanitize_string(args[1].clone()),
-            "-p" => paths.append(&mut get_options(args.clone())),
-            "--path" => paths.append(&mut get_options(args.clone())),
-            "-s" => paths.append(&mut get_saved_path(shortcuts.clone(), get_options(args.clone()))),
-            "--saved" => paths.append(&mut get_saved_path(shortcuts.clone(), get_options(args.clone()))),
+            "-l" => {length = get_length(args[1].clone()); for _ in 0..2 {args.remove(0);}},
+            "--length" => {length = get_length(args[1].clone()); for _ in 0..2 {args.remove(0);}},
+            "-H" => {hash = sanitize_string(&mut args[1]); for _ in 0..2 {args.remove(0);}},
+            "--hash" => {hash = sanitize_string(&mut args[1]); for _ in 0..2 {args.remove(0);}},
+            "-p" => paths.append(&mut get_options(&mut args)),
+            "--path" => paths.append(&mut get_options(&mut args.clone())),
+            "-s" => paths.append(&mut get_saved_path(shortcuts.clone(), get_options(&mut args))),
+            "--saved" => paths.append(&mut get_saved_path(shortcuts.clone(), get_options(&mut args))),
+            "-r" => {operation = READ; args.remove(0);},
+            "--read" => {operation = READ; args.remove(0);},
+            "-w" => {operation = WRITE; args.remove(0);},
+            "--write" => {operation = WRITE; args.remove(0);},
             _ => panic!("{} is unknown argument", args[0]),
         }
-        args = remove_args(args);
     }
-    if hash.len() == 0 {
-        let mut passwd: String = String::new();
-        println!("please enter your password: ");
-        io::stdin().read_line(&mut passwd).expect("Failed to get password");
-        hash = sanitize_string(passwd);
-    }
-    if passwd_hash != None {
-        if sha256::digest(&hash).to_string() != passwd_hash.unwrap(){
-            println!("Your password may be wrong")
-        } 
-    }
-    else {
-        println!("Hash of the password: {:?}",sha256::digest(&hash));
-    }
-    for i in 0..paths.len(){
-        let password = get_password(paths[i].clone(), length, hash.clone());
-        println!("{}: {}", paths[i], password); 
+    if operation == READ {
+        for i in 0..paths.len() {
+            let password = get_saved_password(paths[i].clone(), length, password_check(passwd_hash.as_deref(), hash.clone()));
+            println!("{}: {}", paths[i], password);
+        }
+    } else if operation == WRITE {
+        let mut desired = String::new();
+        println!("please enter your desired password to save: ");
+        io::stdin().read_line(&mut desired).expect("Failed to get password");
+        sanitize_string(&mut desired);
+        for i in 0..paths.len() {
+            let sucsses: &str = write_password(paths[i].clone(), hash.clone(), desired.clone());
+            println!("{} is {}", paths[i], sucsses);
+        }     
+    }   else {
+        panic!("please enter valid mode");
     }
 }
