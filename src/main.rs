@@ -338,10 +338,13 @@ fn main() {
             _ => panic!("{} is unknown argument", args[0]),
         }
     }
+    if hash.len() == 0{
+         hash = password_check(passwd_hash.as_deref(), hash.clone());
+    }
     match operation {
         Mode::READ => {
             for i in 0..paths.len() {
-                match get_saved_password(paths[i].clone(), length, password_check(passwd_hash.as_deref(), hash.clone())) {
+                match get_saved_password(paths[i].clone(), length, hash.clone()) {
                     Some(c) => println!("{}: {}", paths[i], c),
                     None => println!("Could not read {}", paths[i]),
                 }
