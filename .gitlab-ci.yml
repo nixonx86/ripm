@@ -42,12 +42,6 @@ test:cargo:
 #     reports:
 #       junit: $CI_PROJECT_DIR/tests/*.xml
 
-release_job:
-  stage: release
-  release:
-    tag_name: latest
-    description: 'Release created using the release-cli.'
-
 deploy:
   stage: deploy
   script: echo "Define your deployment script!"
