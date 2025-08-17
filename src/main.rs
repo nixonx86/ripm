@@ -135,13 +135,17 @@ fn get_saved_password(path: String, length: usize, hash: Vec<u8>, type_e: Type) 
     Some(s.to_string())
 }
 
-fn write_chars(content: &mut Vec<u8>, hash: Vec<u8>, desired: String) {
+fn write_chars(content: &mut Vec<u8>, hash: Vec<u8>, desired: String, type_e: Type) {
     let mut tmp: usize = {
         let mut ret: u64 = hash[0] as u64;
         for i in 1..hash.len() {
             ret += hash[i] as u64;
         }
         ret.try_into().unwrap()    };
+    match type_e {
+        Type::NEW => tmp = tmp + desired.len(),
+        _ => (),
+    }
     let mut j: usize = 1;
     for i in 0..desired.len() {
         j += 1;
@@ -172,7 +176,7 @@ fn write_password(path: String, hash: Vec<u8>, desired: String, type_e: Type) ->
         None => {println!("Could not read {}", path); return WriteRet::ERROR;},
         Some(c) => content = c,
     }
-    write_chars(&mut content, hash.clone(), desired.clone());
+    write_chars(&mut content, hash.clone(), desired.clone(), type_e.clone());
     if desired.as_bytes().to_vec() == get_chars(content.clone(), desired.len(), hash.clone(), type_e.clone()) {
         let mut file = match File::options().write(true).open(Path::new(&path)) {
             Ok(f) => f,
