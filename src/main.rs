@@ -38,7 +38,7 @@ ripm <arguments> \n
 \t --new -n \t uses the new method to store password \n
 \t --help -h \t help
 ");
-process::exit(0x0100)
+    process::exit(0x0100)
 }
 
 fn remove_whitespace(s: &str) -> String{
