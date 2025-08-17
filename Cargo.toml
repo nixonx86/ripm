@@ -1,6 +1,6 @@
 [package]
 name = "ripm"
-version = "0.3.2"
+version = "0.3.3"
 edition = "2021"
 license-file = "LICENSE"
 description = "Basic password manager that stores passwords in images"

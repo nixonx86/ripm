@@ -4,6 +4,7 @@ use std::fs::{self, File};
 use std::io::{self, prelude::*};
 use std::path::Path;
 use std::{env, u8, usize};
+use std::process;
 
 enum Mode {
     READ,
@@ -16,6 +17,20 @@ enum WriteRet {
     FAIL,
     ERROR,
     UNKNOWN,
+}
+
+fn help() {
+    println!("   
+ripm <arguments> \n
+\t --length (-l) <length> \t specify the length of the password (defaults to 8) \n
+\t --hash (-H) <hash> \t specify the password under which is the final password encrypted (if not set, the program will ask you for one, which is better and safer method) \n
+\t --path (-p) <paths> \t specify where the file is stored, you need to set path and/or saved \n
+\t --saved (-s) <saved name> \t if in config file is set saved path you can use its name as you saved it, you need to set saved and/or path \n
+\t --read -r \t this will set to read password from the image \n
+\t --write -w \t this will set to write password into the image \n
+\t --help -h \t help
+");
+process::exit(0x0100)
 }
 
 fn remove_whitespace(s: &str) -> String{
@@ -178,7 +193,7 @@ fn get_length(arg: String) -> usize{
     let length_result: std::result::Result<usize, std::num::ParseIntError> = arg.trim().parse();
     match length_result {
         Ok(len) => return len,
-        _ => panic!("not valid length"),
+        _ => {println!("not valid length"); help(); return usize::min_value();},
     };
 }
 
@@ -316,7 +331,8 @@ fn main() {
     let mut operation: Mode = Mode::UNSET;
     args.remove(0);
     if args.len() < 2{
-        panic!("not enough argument")
+        println!("not enough argument");
+        help()
     }
     loop {
         if args.len() == 0{
@@ -335,7 +351,9 @@ fn main() {
             "--read" => {operation = Mode::READ; args.remove(0);},
             "-w" => {operation = Mode::WRITE; args.remove(0);},
             "--write" => {operation = Mode::WRITE; args.remove(0);},
-            _ => panic!("{} is unknown argument", args[0]),
+            "-h" => help(),
+            "--help" => help(),
+            _ => {println!("{} is unknown argument", args[0]); help()},
         }
     }
     if hash.len() == 0{
@@ -365,6 +383,6 @@ fn main() {
                 }
             }
         },
-        _ => panic!("please enter valid mode"),
+        _ => {println!("please enter valid mode"); help()},
     }
 }
