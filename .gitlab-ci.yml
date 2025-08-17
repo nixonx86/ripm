@@ -45,7 +45,7 @@ test:cargo:
 release_job:
   stage: release
   release:
-    tag_name: $CI_COMMIT_TAG
+    tag_name: latest
     description: 'Release created using the release-cli.'
 
 deploy:
