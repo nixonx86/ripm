@@ -19,6 +19,12 @@ enum WriteRet {
     UNKNOWN,
 }
 
+#[derive(Clone)]
+enum Type {
+    OLD,
+    NEW
+}
+
 fn help() {
     println!("   
 ripm <arguments> \n
@@ -28,6 +34,8 @@ ripm <arguments> \n
 \t --saved (-s) <saved name> \t if in config file is set saved path you can use its name as you saved it, you need to set saved and/or path \n
 \t --read -r \t this will set to read password from the image \n
 \t --write -w \t this will set to write password into the image \n
+\t --old -o \t uses the old method to store password (only use if you use this up to 0.3.3 version), the new one is safer \n
+\t --new -n \t uses the new method to store password \n
 \t --help -h \t help
 ");
 process::exit(0x0100)
@@ -76,13 +84,17 @@ fn write_byte(content: &mut Vec<u8>,mut i: usize, byte: u8) {
     }
 }
 
-fn get_chars(content: Vec<u8>, length: usize, hash: Vec<u8>) -> Vec<u8>{
+fn get_chars(content: Vec<u8>, length: usize, hash: Vec<u8>, type_e: Type) -> Vec<u8>{
     let mut tmp: usize = {
         let mut ret: u64 = hash[0] as u64;
         for i in 1..hash.len() {
             ret += hash[i] as u64;
         }
         ret.try_into().unwrap()    };
+    match type_e {
+        Type::NEW => tmp = tmp + length,
+        _ => (),
+    }
     let mut ret_array: Vec<u8> = Vec::new();
     let mut j: usize = 1;
     for i in 0..length {
@@ -112,13 +124,13 @@ fn get_chars(content: Vec<u8>, length: usize, hash: Vec<u8>) -> Vec<u8>{
     ret_array
 }
 
-fn get_saved_password(path: String, length: usize, hash: Vec<u8>) -> Option<String>{
+fn get_saved_password(path: String, length: usize, hash: Vec<u8>, type_e: Type) -> Option<String>{
     let content;
     match open_file(Path::new(&path)) {
         None => {println!("Could not read {}", path); return None;},
         Some(c) => content = c,
     }
-    let byte_array = get_chars(content, length, hash);
+    let byte_array = get_chars(content, length, hash, type_e);
     let s = String::from_utf8_lossy(&byte_array);
     Some(s.to_string())
 }
@@ -154,14 +166,14 @@ fn write_chars(content: &mut Vec<u8>, hash: Vec<u8>, desired: String) {
     }
 }
 
-fn write_password(path: String, hash: Vec<u8>, desired: String) -> WriteRet{
+fn write_password(path: String, hash: Vec<u8>, desired: String, type_e: Type) -> WriteRet{
     let mut content;
     match open_file(Path::new(&path)) {
         None => {println!("Could not read {}", path); return WriteRet::ERROR;},
         Some(c) => content = c,
     }
     write_chars(&mut content, hash.clone(), desired.clone());
-    if desired.as_bytes().to_vec() == get_chars(content.clone(), desired.len(), hash.clone()) {
+    if desired.as_bytes().to_vec() == get_chars(content.clone(), desired.len(), hash.clone(), type_e.clone()) {
         let mut file = match File::options().write(true).open(Path::new(&path)) {
             Ok(f) => f,
             Err(e) => panic!("Could not open {:?}, error: {}", path, e),
@@ -174,7 +186,7 @@ fn write_password(path: String, hash: Vec<u8>, desired: String) -> WriteRet{
             Err(e) => panic!("Could not write to {:?}, error {}", path, e),
             _ => (),
         }
-        match get_saved_password(path.clone(), desired.len(), hash) {
+        match get_saved_password(path.clone(), desired.len(), hash, type_e) {
             Some(c) => {
                 if desired == c{
                     return WriteRet::SUCSSES;
@@ -329,6 +341,7 @@ fn main() {
     let mut paths: Vec<String> = Vec::new();
     let mut hash: Vec<u8> = vec![];
     let mut operation: Mode = Mode::UNSET;
+    let mut type_e = Type::NEW;
     args.remove(0);
     if args.len() < 2{
         println!("not enough argument");
@@ -353,6 +366,10 @@ fn main() {
             "--write" => {operation = Mode::WRITE; args.remove(0);},
             "-h" => help(),
             "--help" => help(),
+            "-o" => {type_e = Type::OLD; args.remove(0);},
+            "--old" => {type_e = Type::OLD; args.remove(0);}
+            "-n" => {type_e = Type::NEW; args.remove(0);}
+            "--new" => {type_e = Type::NEW; args.remove(0);}
             _ => {println!("{} is unknown argument", args[0]); help()},
         }
     }
@@ -362,7 +379,7 @@ fn main() {
     match operation {
         Mode::READ => {
             for i in 0..paths.len() {
-                match get_saved_password(paths[i].clone(), length, hash.clone()) {
+                match get_saved_password(paths[i].clone(), length, hash.clone(), type_e.clone()) {
                     Some(c) => println!("{}: {}", paths[i], c),
                     None => println!("Could not read {}", paths[i]),
                 }
@@ -375,7 +392,7 @@ fn main() {
             io::stdin().read_line(&mut desired).expect("Failed to get password");
             sanitize_string(&mut desired);
             for i in 0..paths.len() {
-                match write_password(paths[i].clone(), hash.clone(), desired.clone()) {
+                match write_password(paths[i].clone(), hash.clone(), desired.clone(), type_e.clone()) {
                     WriteRet::SUCSSES => println!("{} was sucssesfuly writen", paths[i]),
                     WriteRet::FAIL => println!("{} was not sucssesfull", paths[i]),
                     WriteRet::ERROR => println!("Was not able to write to {}", paths[i]),
