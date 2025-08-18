@@ -246,14 +246,14 @@ fn create_config() ->  bool{
     true
 }
 
-fn check_config() -> (usize, Option<String>, HashMap<String, String>){
+fn check_config() -> (usize, Vec<String>, HashMap<String, String>){
     let conf_file = home::home_dir().unwrap().join(".config/ripm/ripm.conf");
     let mut files = true;
     if conf_file.exists() == false {
         files = create_config();
     }
     let mut length: usize = 8;
-    let mut password: Option<String> = None;
+    let mut password: Vec<String> = Vec::new();
     let mut shortcuts: HashMap<String, String> = HashMap::new();
     if files {
         let conf_file = home::home_dir().unwrap().join(".config/ripm/ripm.conf");
@@ -276,23 +276,42 @@ fn check_config() -> (usize, Option<String>, HashMap<String, String>){
                     match parts[0].trim(){
                         "default_length" => length = get_length(parts[1].to_string()),
                         "password" => {
-                            password = Some(parts[1].trim().to_string());
-                            if Path::new(&password.clone().unwrap()).exists(){
-                                match open_file(&Path::new(&password.clone().unwrap())){
-                                    Some(c) => password = Some(String::from_utf8_lossy(&c).to_string()),
-                                    _ => (),
+                            let tmp_p = parts[1].trim().to_string();
+                            if Path::new(&tmp_p).exists(){
+                                    match open_file(&Path::new(&tmp_p)){
+                                        Some(c) => {
+                                            for i in String::from_utf8_lossy(&c).split("\n") {
+                                                if i.len() != 0 {
+                                                    if i.as_bytes()[i.len()-1] == 10 {
+                                                        let mut tmp1: Vec<u8> = i.as_bytes().to_vec();
+                                                        tmp1.remove(tmp1.len()-1);
+                                                        if tmp1.len() != 64 {
+                                                            println!("invalid sha256 hash {}", tmp_p);
+                                                        }
+                                                        password.push(String::from_utf8_lossy(&tmp1).to_string());
+                                                    }
+                                                    password.push(i.to_string());
+                                                }
+                                            }
+                                        },
+                                        _ => (),
+                                    }
+                                    continue;
+                            } 
+                            if tmp_p.as_bytes()[tmp_p.len()-1] == 10 {
+                                let mut tmp1: Vec<u8> = tmp_p.as_bytes().to_vec();
+                                tmp1.remove(tmp1.len()-1);
+                                if tmp1.len() != 64 {
+                                    println!("invalid sha256 hash {}", tmp_p);
                                 }
+                                password.push(String::from_utf8_lossy(&tmp1).to_string());
+                                continue;
                             }
-                            else {
-                                if password.clone().unwrap().len() != 64 {
-                                    println!("invalid sha256 hash");
-                                } 
+                            if tmp_p.len() != 64 {
+                                println!("invalid sha256 hash {}", tmp_p);
+                                continue;
                             }
-                            if password.clone().unwrap().as_bytes()[password.clone().unwrap().len()-1] == 10 {
-                                let mut tmp: Vec<u8> = password.clone().unwrap().as_bytes().to_vec();
-                                tmp.remove(tmp.len()-1);
-                                password = Some(String::from_utf8_lossy(&tmp).to_string());
-                            }
+                            password.push(tmp_p);
                         },
                         _ => {shortcuts.insert(parts[0].to_string(), parts[1].to_string());},
 
@@ -318,20 +337,18 @@ fn get_options(args: &mut Vec<String>) -> Vec<String> {
     return options;
 }
 
-fn password_check(hash: Option<&str>, mut password: Vec<u8>) -> Vec<u8>{
+fn password_check(hash: Vec<String>, mut password: Vec<u8>) -> Vec<u8>{
     if password.len() == 0 {
         print!("please enter your password: ");
         io::stdout().flush().unwrap();
         password = read_password().unwrap().into();
     }
-    if hash != None {
-        if sha256::digest(&password).to_string() != hash.unwrap(){
-            println!("Your password may be wrong")
-        } 
+    for i in hash{ 
+        if sha256::digest(&password).to_string() == i{
+            return password;
+        }
     }
-    else {
-        println!("Hash of the password: {:?}",sha256::digest(&password));
-    }
+    println!("Hash of the password: {:?}",sha256::digest(&password));
     password
 }
 
@@ -377,7 +394,7 @@ fn main() {
         }
     }
     if hash.len() == 0{
-         hash = password_check(passwd_hash.as_deref(), hash.clone());
+         hash = password_check(passwd_hash, hash.clone());
     }
     match operation {
         Mode::READ => {
