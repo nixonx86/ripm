@@ -1,6 +1,6 @@
 [package]
 name = "ripm"
-version = "0.3.5"
+version = "0.3.6"
 edition = "2021"
 license-file = "LICENSE"
 description = "Basic password manager that stores passwords in images"
@@ -13,4 +13,5 @@ categories = ["command-line-utilities"]
 
 [dependencies]
 home = "0.5.11"
+rpassword = "7.4.0"
 sha256 = "1.6.0"

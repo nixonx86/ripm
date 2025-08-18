@@ -6,6 +6,8 @@ use std::path::Path;
 use std::{env, u8, usize};
 use std::process;
 
+use rpassword::read_password;
+
 enum Mode {
     READ,
     WRITE,
@@ -309,21 +311,11 @@ fn get_options(args: &mut Vec<String>) -> Vec<String> {
     return options;
 }
 
-fn sanitize_string(s: &mut String) -> Vec<u8> {
-    let mut v = s.as_bytes().to_vec();
-    if v[v.len()-1] == 10 {
-        v.remove(v.len()-1);
-    }
-    *s = String::from_utf8(v).unwrap();
-    s.as_bytes().to_vec()
-}
-
 fn password_check(hash: Option<&str>, mut password: Vec<u8>) -> Vec<u8>{
     if password.len() == 0 {
-        let mut passwd: String = String::new();
-        println!("please enter your password: ");
-        io::stdin().read_line(&mut passwd).expect("Failed to get password");
-        password = sanitize_string(&mut passwd);
+        print!("please enter your password: ");
+        io::stdout().flush().unwrap();
+        password = read_password().unwrap().into();
     }
     if hash != None {
         if sha256::digest(&password).to_string() != hash.unwrap(){
@@ -358,8 +350,8 @@ fn main() {
         match args[0].as_str() {
             "-l" => {length = get_length(args[1].clone()); for _ in 0..2 {args.remove(0);}},
             "--length" => {length = get_length(args[1].clone()); for _ in 0..2 {args.remove(0);}},
-            "-H" => {hash = sanitize_string(&mut args[1]); for _ in 0..2 {args.remove(0);}},
-            "--hash" => {hash = sanitize_string(&mut args[1]); for _ in 0..2 {args.remove(0);}},
+            "-H" => {hash = args[1].clone().into(); for _ in 0..2 {args.remove(0);}},
+            "--hash" => {hash = args[1].clone().into(); for _ in 0..2 {args.remove(0);}},
             "-p" => paths.append(&mut get_options(&mut args)),
             "--path" => paths.append(&mut get_options(&mut args.clone())),
             "-s" => paths.append(&mut get_saved_path(shortcuts.clone(), get_options(&mut args))),
@@ -391,10 +383,8 @@ fn main() {
             }
         },
         Mode::WRITE => {
-            let mut desired = String::new();
             println!("please enter your desired password to save: ");
-            io::stdin().read_line(&mut desired).expect("Failed to get password");
-            sanitize_string(&mut desired);
+            let desired = read_password().unwrap();
             for i in 0..paths.len() {
                 match write_password(paths[i].clone(), hash.clone(), desired.clone(), type_e.clone()) {
                     WriteRet::SUCSSES => println!("{} was sucssesfuly writen", paths[i]),
