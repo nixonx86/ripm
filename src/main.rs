@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{self, prelude::*};
 use std::path::Path;
+use std::str::Bytes;
 use std::{env, u8, usize};
 use std::process;
 
@@ -239,7 +240,7 @@ fn create_config() ->  bool{
         Ok(f) => f,
     };
     match f.write_all("default_length: 8\ndefault_password: password.hash\n".as_bytes()) {
-        Err(e) => {println!("{} failed to write into config file", e); return false;},
+        Err(e) => {println!("{} failed to write into config file", e); return false},
         _ => (),
     }
     true
@@ -252,10 +253,9 @@ fn check_config() -> (usize, Option<String>, HashMap<String, String>){
         files = create_config();
     }
     let mut length: usize = 8;
-    let mut hash = None;
+    let mut password: Option<String> = None;
     let mut shortcuts: HashMap<String, String> = HashMap::new();
     if files {
-        let mut password = String::new();
         let conf_file = home::home_dir().unwrap().join(".config/ripm/ripm.conf");
         let content = open_file(&conf_file);
         match content {
@@ -266,7 +266,7 @@ fn check_config() -> (usize, Option<String>, HashMap<String, String>){
                 let lines: Vec<&str> = tmp.split("\n").collect();
                 for i in 0..lines.len() {
                     if lines[i].len() == 0 {
-                        break;
+                        continue;
                     }
                     let parts: Vec<&str> = lines[i].split(":").collect();
                     if parts.len() % 2 == 1 {
@@ -275,26 +275,33 @@ fn check_config() -> (usize, Option<String>, HashMap<String, String>){
                     }
                     match parts[0].trim(){
                         "default_length" => length = get_length(parts[1].to_string()),
-                        "default_password" => {
-                            let passwd_hash = parts[1].trim().to_string();
-                            let pass = open_file(&Path::new(&passwd_hash));
-                            match pass {
-                                Some(c) => password = String::from_utf8_lossy(&c).to_string(),
-                                _ => (),
-                            }},
+                        "password" => {
+                            password = Some(parts[1].trim().to_string());
+                            if Path::new(&password.clone().unwrap()).exists(){
+                                match open_file(&Path::new(&password.clone().unwrap())){
+                                    Some(c) => password = Some(String::from_utf8_lossy(&c).to_string()),
+                                    _ => (),
+                                }
+                            }
+                            else {
+                                if password.clone().unwrap().len() != 64 {
+                                    println!("invalid sha256 hash");
+                                } 
+                            }
+                            if password.clone().unwrap().as_bytes()[password.clone().unwrap().len()-1] == 10 {
+                                let mut tmp: Vec<u8> = password.clone().unwrap().as_bytes().to_vec();
+                                tmp.remove(tmp.len()-1);
+                                password = Some(String::from_utf8_lossy(&tmp).to_string());
+                            }
+                        },
                         _ => {shortcuts.insert(parts[0].to_string(), parts[1].to_string());},
 
                     }
                 }
-                if password.len() > 0 {
-                    let mut pass_vec: Vec<u8> = password.as_bytes().to_vec();
-                    pass_vec.remove(pass_vec.len()-1);
-                    hash = Some(String::from_utf8_lossy(&pass_vec).to_string());
-                }
             }
         }
     }
-    (length, hash, shortcuts)
+    (length, password, shortcuts)
 
 }
 
@@ -323,7 +330,7 @@ fn password_check(hash: Option<&str>, mut password: Vec<u8>) -> Vec<u8>{
         } 
     }
     else {
-        println!("Hash of the password: {:?}",sha256::digest(hash.unwrap()));
+        println!("Hash of the password: {:?}",sha256::digest(&password));
     }
     password
 }
