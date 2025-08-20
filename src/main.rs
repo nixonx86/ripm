@@ -57,6 +57,7 @@ fn open_file(path: &Path) -> Option<Vec<u8>>{
         Err(e) => { println!("Could not read {:?}, error {}", path, e); return None; },
         _ => (),
     };
+    drop(file);
     Some(content)
 }
 
@@ -99,6 +100,7 @@ fn get_chars(content: Vec<u8>, length: usize, hash: Vec<u8>, type_e: Type) -> Ve
     }
     let mut ret_array: Vec<u8> = Vec::new();
     let mut j: usize = 1;
+    if hash.len() == 1 {j = 0;} 
     for i in 0..length {
         j += 1;
         if j <= hash.len() {
@@ -259,8 +261,8 @@ fn check_config() -> (usize, Vec<String>, HashMap<String, String>){
         let content = open_file(&conf_file);
         match content {
             None => println!("Error reading content file"),
-            _ => { 
-                let binding = content.unwrap();
+            Some(c) => { 
+                let binding = c;
                 let tmp = String::from_utf8_lossy(&binding);
                 let lines: Vec<&str> = tmp.split("\n").collect();
                 for i in 0..lines.len() {
@@ -270,7 +272,7 @@ fn check_config() -> (usize, Vec<String>, HashMap<String, String>){
                     let parts: Vec<&str> = lines[i].split(":").collect();
                     if parts.len() % 2 == 1 {
                         println!("invalid config file");
-                        continue;
+                        break;
                     }
                     match parts[0].trim(){
                         "default_length" => length = get_length(parts[1].to_string()),
@@ -281,15 +283,21 @@ fn check_config() -> (usize, Vec<String>, HashMap<String, String>){
                                         Some(c) => {
                                             for i in String::from_utf8_lossy(&c).split("\n") {
                                                 if i.len() != 0 {
+                                                    let mut tmp1: Vec<u8> = i.as_bytes().to_vec();
                                                     if i.as_bytes()[i.len()-1] == 10 {
-                                                        let mut tmp1: Vec<u8> = i.as_bytes().to_vec();
                                                         tmp1.remove(tmp1.len()-1);
                                                         if tmp1.len() != 64 {
                                                             println!("invalid sha256 hash {}", tmp_p);
                                                         }
-                                                        password.push(String::from_utf8_lossy(&tmp1).to_string());
+                                                        
                                                     }
-                                                    password.push(i.to_string());
+                                                    if i.as_bytes()[0] == 32 {
+                                                        tmp1.remove(0);
+                                                        if tmp1.len() != 64 {
+                                                            println!("invalid sha256 hash {}", tmp_p);
+                                                        }
+                                                    }
+                                                    password.push(String::from_utf8_lossy(&tmp1).to_string());
                                                 }
                                             }
                                         },
@@ -330,7 +338,7 @@ fn check_config() -> (usize, Vec<String>, HashMap<String, String>){
 
 }
 
-fn get_options(args: &mut Vec<String>) -> Vec<String> {
+fn get_params(args: &mut Vec<String>) -> Vec<String> {
     let mut options: Vec<String> = vec![];
     for _ in 1..args.len(){
         if args[1].as_bytes()[0] == '-' as u8{
@@ -349,12 +357,85 @@ fn password_check(hash: Vec<String>, mut password: Vec<u8>) -> Vec<u8>{
         io::stdout().flush().unwrap();
         password = read_password().unwrap().into();
     }
-    for i in hash{ 
+    for i in hash{
         if sha256::digest(&password).to_string() == i{
             return password;
         }
     }
-    println!("Hash of the password: {:?}",sha256::digest(&password));
+    'out: loop {
+        print!("Hash of your password was not found, do you wish to autowrite it? (y/n) ");
+        io::stdout().flush().unwrap();
+        let mut input = String::new();
+        io::stdin().read_line(&mut input).expect("error: unable to read user input");
+        match input.trim().to_lowercase().as_str() {
+            "y" => {
+                let hashed = sha256::digest(&password).to_string();
+                let mut path = home::home_dir().unwrap().join(".config/ripm/ripm.conf");
+                let mut conf_file = match File::options().write(true).read(true).open(&path) {
+                    Ok(f) => f,
+                    Err(e) => { println!("Could not open {}, error: {} \n hash of password: {}", path.display(), e, hashed); return password; },
+                };
+                let mut content = vec![];
+                match conf_file.read_to_end(&mut content) {
+                    Err(e) => println!("Could not read {}, error {} \n hash of password {}", path.display(), e, hashed),
+                    Ok(_) => {
+                        let tmp = String::from_utf8_lossy(&content);
+                        let lines: Vec<&str> = tmp.split("\n").collect();
+                        for i in 0..lines.len() {
+                            if lines[i].len() == 0 {
+                                continue;
+                            }
+                            let parts: Vec<&str> = lines[i].split(":").collect();
+                            if parts.len() % 2 == 1 {
+                                println!("invalid config file");
+                                break;
+                            }
+                            match parts[0].trim(){
+                                "password" => if parts[1].contains(".hash") && Path::new(&parts[1].trim().to_string()).exists(){
+                                        path = home::home_dir().unwrap().join(".config/ripm").join(parts[1].trim());
+                                        let mut file = match File::options().write(true).read(true).open(&path) {
+                                            Ok(f) => f,
+                                            Err(e) => { println!("Could not open {}, error: {} \n hash of password: {}", path.display(), e, hashed); break;},
+                                        };
+                                        let mut hash_content = vec![];
+                                        match file.read_to_end(&mut hash_content) {
+                                            Err(e) => {println!("Could not read {}, error {} \n hash of password {}", path.display(), e, hashed); break;},
+                                            _ => ()
+                                        }
+                                         let mut to_write = String::new();
+                                        if hash_content.len() == 0 || hash_content[hash_content.len()-1] == 32 {
+                                            to_write = hashed.clone();
+                                        } else {
+                                            to_write = ("\n").to_owned() + &hashed
+                                        }                            
+                                        match file.write_all(to_write.as_bytes()) {
+                                            Err(e) => println!("Could not write to {}, error: {} \n hash of password: {}", path.display(), e, hashed),
+                                            _ => break 'out,
+                                        }
+                                },
+                                _ => (),
+                            }
+                        }
+                        let mut to_write = String::new();
+                        if content.len() == 0 || content[content.len()-1] == 32 {
+                            to_write = "password: ".to_owned() + &hashed;
+                        } else {
+                            to_write = ("\n password: ").to_owned() + &hashed
+                        }
+                        match conf_file.write_all(to_write.as_bytes()) {
+                            Err(e) =>  println!("Could not write to {}, error: {} \n hash of password: {}", path.display(), e, hashed),
+                            _ => break 'out,
+
+                        }
+                    }
+                }
+                break 'out;
+            },
+            "n" => break 'out,
+            _ => (),
+        }
+
+    }
     password
 }
 
@@ -382,10 +463,10 @@ fn main() {
             "--length" => {length = get_length(args[1].clone()); for _ in 0..2 {args.remove(0);}},
             "-H" => {hash = args[1].clone().into(); for _ in 0..2 {args.remove(0);}},
             "--hash" => {hash = args[1].clone().into(); for _ in 0..2 {args.remove(0);}},
-            "-p" => paths.append(&mut get_options(&mut args)),
-            "--path" => paths.append(&mut get_options(&mut args.clone())),
-            "-s" => paths.append(&mut get_saved_path(shortcuts.clone(), get_options(&mut args))),
-            "--saved" => paths.append(&mut get_saved_path(shortcuts.clone(), get_options(&mut args))),
+            "-p" => paths.append(&mut get_params(&mut args)),
+            "--path" => paths.append(&mut get_params(&mut args.clone())),
+            "-s" => paths.append(&mut get_saved_path(shortcuts.clone(), get_params(&mut args))),
+            "--saved" => paths.append(&mut get_saved_path(shortcuts.clone(), get_params(&mut args))),
             "-r" => {operation = Mode::READ; args.remove(0);},
             "--read" => {operation = Mode::READ; args.remove(0);},
             "-w" => {operation = Mode::WRITE; args.remove(0);},
