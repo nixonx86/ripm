@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{self, prelude::*};
 use std::path::Path;
-use std::str::Bytes;
 use std::{env, u8, usize};
 use std::process;
 
@@ -313,8 +312,15 @@ fn check_config() -> (usize, Vec<String>, HashMap<String, String>){
                             }
                             password.push(tmp_p);
                         },
-                        _ => {shortcuts.insert(parts[0].to_string(), parts[1].to_string());},
-
+                        _ => { 
+                            if parts[1].to_string().as_bytes()[0] == '/' as u8 { // absoulte path
+                                shortcuts.insert(parts[0].to_string(), parts[1].to_string());
+                                continue;
+                            }
+                            // dynamic
+                            let path = home::home_dir().unwrap().join(".config/ripm").join(parts[1]).to_str().unwrap().to_string();
+                            shortcuts.insert(parts[0].to_string(), path);
+                        }
                     }
                 }
             }
@@ -408,6 +414,7 @@ fn main() {
         },
         Mode::WRITE => {
             println!("please enter your desired password to save: ");
+            io::stdout().flush().unwrap();
             let desired = read_password().unwrap();
             for i in 0..paths.len() {
                 match write_password(paths[i].clone(), hash.clone(), desired.clone(), type_e.clone()) {
