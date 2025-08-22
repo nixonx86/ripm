@@ -1,4 +1,3 @@
-use core::panic;
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{self, prelude::*};
@@ -184,14 +183,14 @@ fn write_password(path: String, hash: Vec<u8>, desired: String, type_e: Type) ->
     if desired.as_bytes().to_vec() == get_chars(content.clone(), desired.len(), hash.clone(), type_e.clone()) {
         let mut file = match File::options().write(true).open(Path::new(&path)) {
             Ok(f) => f,
-            Err(e) => panic!("Could not open {:?}, error: {}", path, e),
+            Err(e) => {println!("Could not open {:?}, error: {}", path, e); return WriteRet::ERROR},
         };
         match file.write_all(&content) {
-            Err(e) => panic!("Could not write to {:?}, error {}", path, e),
+            Err(e) => {println!("Could not write to {:?}, error {}", path, e); return WriteRet::ERROR;},
             _ => (),
         }
         match file.sync_data() {
-            Err(e) => panic!("Could not write to {:?}, error {}", path, e),
+            Err(e) => {println!("Could not write to {:?}, error {}", path, e); return WriteRet::ERROR;},
             _ => (),
         }
         match get_saved_password(path.clone(), desired.len(), hash, type_e) {
@@ -240,7 +239,7 @@ fn create_config() ->  bool{
         Err(e) => {println!("{} failed to create config directory", e); return false},
         Ok(f) => f,
     };
-    match f.write_all("default_length: 8\ndefault_password: password.hash\n".as_bytes()) {
+    match f.write_all("default_length: 8".as_bytes()) {
         Err(e) => {println!("{} failed to write into config file", e); return false},
         _ => (),
     }
@@ -494,7 +493,7 @@ fn main() {
             }
         },
         Mode::WRITE => {
-            println!("please enter your desired password to save: ");
+            print!("please enter your desired password to save: ");
             io::stdout().flush().unwrap();
             let desired = read_password().unwrap();
             for i in 0..paths.len() {
