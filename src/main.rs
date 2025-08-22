@@ -3,10 +3,10 @@ use std::fs::{self, File};
 use std::io::{self, prelude::*};
 use std::path::Path;
 use std::{env, u8, usize};
-use std::process;
 
 use rpassword::read_password;
 
+#[derive(Clone)]
 enum Mode {
     READ,
     WRITE,
@@ -26,6 +26,196 @@ enum Type {
     NEW
 }
 
+struct PasswordData {
+    path: Box<Path>,
+    length: usize,
+    master_password: Vec<u8>,
+    type_e: Type,
+    mode: Mode,
+    password: Option<String>,
+    content: Vec<u8>,
+    desired: Option<String>
+}
+
+impl PasswordData {
+    fn get_saved_password(&mut self) -> Option<String>{
+        match open_file(&*self.path) {
+            None => {println!("Could not read {}", (*self.path).display()); return None},
+            Some(c) => self.content = c,
+        }
+        self.get_chars();
+        self.password.clone()
+    }
+    fn get_chars(&mut self) -> Vec<u8>{
+        let mut tmp: usize = {
+            let mut ret: u64 = self.master_password[0] as u64;
+            for i in 1..self.master_password.len() {
+                ret += self.master_password[i] as u64;
+            }
+            ret.try_into().unwrap()};
+        match self.type_e {
+            Type::NEW => tmp = tmp + self.length,
+            _ => (),
+        }
+        let mut ret_array: Vec<u8> = Vec::new();
+        let mut j: usize = 1;
+        if self.master_password.len() == 1 {j = 0;} 
+        for i in 0..self.length {
+            j += 1;
+            if j <= self.master_password.len() {
+                j = 0;
+            }
+        let tmp_i: usize = self.master_password[j].into();
+        if i%2 == 0 {
+            if tmp + tmp_i < self.content.len() {
+                tmp = tmp + tmp_i;
+            } else {
+                tmp = (tmp + tmp_i) % self.content.len();
+            }
+        } else {
+            if tmp * tmp_i < self.content.len() {
+                tmp = tmp * tmp_i;
+            } else {
+                tmp = (tmp * tmp_i) % self.content.len();
+            }
+        }
+        ret_array.push(self.bytes_check(tmp)); 
+        }
+        if ret_array[0] == 0 {
+            ret_array[0] = self.bytes_check(tmp);
+        }
+        self.password = Some(String::from_utf8_lossy(&ret_array).to_string());
+        return ret_array;
+    }
+    fn bytes_check(&self ,mut i: usize) -> u8{
+        loop {
+            let tmp = self.content[i];
+            if tmp < 32 || tmp > 126{
+                i += 1;
+            } else {
+                return tmp;
+            }
+        }
+    }
+    fn get_done(&mut self) {
+        match self.mode {
+            Mode::READ => {
+                self.get_saved_password(); 
+                match &self.password {
+                    Some(c) => println!("{}: {}", (*self.path).display(), c),
+                    None => println!("Could not read {}", (*self.path).display()),
+                }
+            },
+            Mode::WRITE => {
+                if self.desired == None{
+                    print!("please enter your desired password to save: ");
+                    io::stdout().flush().unwrap();
+                    self.desired = Some(read_password().unwrap());
+                }
+                match self.write_password() {
+                    WriteRet::SUCSSES => println!("{} was sucssesfuly writen", (*self.path).display()),
+                    WriteRet::FAIL => println!("{} was not sucssesfull", (*self.path).display()),
+                    WriteRet::ERROR => println!("Was not able to write to {}", (*self.path).display()),
+                    WriteRet::UNKNOWN => println!("{} can not be sure if is correctly saved", (*self.path).display()),
+                }
+            },
+            _ => {println!("not valid mode"); help()},
+        }
+    }
+    fn write_password(&mut self) -> WriteRet{
+        self.length = self.desired.clone().unwrap().len();
+        match open_file(&(*self.path)) {
+            None => {println!("Could not read {}", (*self.path).display()); return WriteRet::ERROR;},
+            Some(c) => self.content = c,
+        }
+        self.write_chars();
+        if self.desired.clone().unwrap().as_bytes() == self.get_chars() {
+            let mut file = match File::options().write(true).open(&(*self.path)) {
+                Ok(f) => f,
+                Err(e) => {println!("Could not open {:?}, error: {}", (*self.path).display(), e); return WriteRet::ERROR},
+            };
+            match file.write_all(&self.content) {
+                Err(e) => {println!("Could not write to {:?}, error {}", (*self.path).display(), e); return WriteRet::ERROR;},
+                _ => (),
+            }
+            match file.sync_data() {
+                Err(e) => {println!("Could not write to {:?}, error {}", (*self.path).display(), e); return WriteRet::ERROR;},
+                _ => (),
+            }
+            match self.get_saved_password() {
+                Some(c) => {
+                    if self.desired == Some(c){
+                        return WriteRet::SUCSSES;
+                    } else {
+                        return WriteRet::FAIL;
+                    }
+                },
+                None => {println!("Could not verify {:?}", (*self.path).display()); return WriteRet::UNKNOWN;}
+            }
+        } else {
+            WriteRet::FAIL
+        }
+    }
+    fn write_chars(&mut self) {
+        let mut tmp: usize = {
+            let mut ret: u64 = self.master_password[0] as u64;
+            for i in 1..self.master_password.len() {
+                ret += self.master_password[i] as u64;
+            }
+            ret.try_into().unwrap()    };
+        match self.type_e {
+            Type::NEW => tmp = tmp + self.length,
+            _ => (),
+        }
+        let mut j: usize = 1;
+        for i in 0..self.length {
+            j += 1;
+            if j <= self.master_password.len() {
+                j = 0;
+            }
+            let tmp_i: usize = self.master_password[j].into();
+            if i%2 == 0 {
+                if tmp + tmp_i < self.content.len() {
+                    tmp = tmp + tmp_i;
+                } else {
+                    tmp = (tmp + tmp_i) % self.content.len();
+                }
+            } else {
+                if tmp * tmp_i < self.content.len() {
+                    tmp = tmp * tmp_i;
+                } else {
+                    tmp = (tmp * tmp_i) % self.content.len();
+                }
+            }
+            self.write_byte(tmp, self.desired.clone().unwrap().as_bytes().to_vec()[i]); 
+        }
+    }
+    fn write_byte(&mut self,mut i: usize, byte: u8) {
+        loop {
+            let tmp = self.content[i];
+            if tmp < 32 || tmp > 126{
+                i += 1;
+            } else {
+                self.content[i] = byte;
+                return;
+            }
+    }
+}
+}
+
+fn create_passwd_struct(path: &Path, length: usize, master_password: Vec<u8>, type_e: Type, mode: Mode) -> PasswordData{
+   PasswordData {
+        path: path.into(),
+        length,
+        master_password,
+        type_e,
+        mode,
+        password: None,
+        content: Vec::new(),
+        desired: None
+   } 
+}
+
 fn help() {
     println!("   
 ripm <arguments> \n
@@ -39,7 +229,6 @@ ripm <arguments> \n
 \t --new -n \t uses the new method to store password \n
 \t --help -h \t help
 ");
-    process::exit(0x0100)
 }
 
 fn remove_whitespace(s: &str) -> String{
@@ -58,154 +247,6 @@ fn open_file(path: &Path) -> Option<Vec<u8>>{
     };
     drop(file);
     Some(content)
-}
-
-fn bytes_check(content: Vec<u8>,mut i: usize) -> u8{
-    loop {
-        let tmp = content[i];
-        if tmp < 32 || tmp > 126{
-            i += 1;
-        } else {
-            return tmp;
-        }
-
-    }
-}
-
-fn write_byte(content: &mut Vec<u8>,mut i: usize, byte: u8) {
-    loop {
-        let tmp = content[i];
-        if tmp < 32 || tmp > 126{
-            i += 1;
-        } else {
-            content[i] = byte;
-            println!("{}", content[i] as char);
-            return;
-        }
-
-    }
-}
-
-fn get_chars(content: Vec<u8>, length: usize, hash: Vec<u8>, type_e: Type) -> Vec<u8>{
-    let mut tmp: usize = {
-        let mut ret: u64 = hash[0] as u64;
-        for i in 1..hash.len() {
-            ret += hash[i] as u64;
-        }
-        ret.try_into().unwrap()    };
-    match type_e {
-        Type::NEW => tmp = tmp + length,
-        _ => (),
-    }
-    let mut ret_array: Vec<u8> = Vec::new();
-    let mut j: usize = 1;
-    if hash.len() == 1 {j = 0;} 
-    for i in 0..length {
-        j += 1;
-        if j <= hash.len() {
-            j = 0;
-        }
-        let tmp_i: usize = hash[j].into();
-        if i%2 == 0 {
-            if tmp + tmp_i < content.len() {
-                tmp = tmp + tmp_i;
-            } else {
-                tmp = (tmp + tmp_i) % content.len();
-            }
-        } else {
-            if tmp * tmp_i < content.len() {
-                tmp = tmp * tmp_i;
-            } else {
-                tmp = (tmp * tmp_i) % content.len();
-            }
-        }
-        ret_array.push(bytes_check(content.clone(), tmp)); 
-    }
-    if ret_array[0] == 0 {
-        ret_array[0] = bytes_check(content, tmp);
-    }
-    ret_array
-}
-
-fn get_saved_password(path: String, length: usize, hash: Vec<u8>, type_e: Type) -> Option<String>{
-    let content;
-    match open_file(Path::new(&path)) {
-        None => {println!("Could not read {}", path); return None;},
-        Some(c) => content = c,
-    }
-    let byte_array = get_chars(content, length, hash, type_e);
-    let s = String::from_utf8_lossy(&byte_array);
-    Some(s.to_string())
-}
-
-fn write_chars(content: &mut Vec<u8>, hash: Vec<u8>, desired: String, type_e: Type) {
-    let mut tmp: usize = {
-        let mut ret: u64 = hash[0] as u64;
-        for i in 1..hash.len() {
-            ret += hash[i] as u64;
-        }
-        ret.try_into().unwrap()    };
-    match type_e {
-        Type::NEW => tmp = tmp + desired.len(),
-        _ => (),
-    }
-    let mut j: usize = 1;
-    for i in 0..desired.len() {
-        j += 1;
-        if j <= hash.len() {
-            j = 0;
-        }
-        let tmp_i: usize = hash[j].into();
-        if i%2 == 0 {
-            if tmp + tmp_i < content.len() {
-                tmp = tmp + tmp_i;
-            } else {
-                tmp = (tmp + tmp_i) % content.len();
-            }
-        } else {
-            if tmp * tmp_i < content.len() {
-                tmp = tmp * tmp_i;
-            } else {
-                tmp = (tmp * tmp_i) % content.len();
-            }
-        }
-        write_byte(content, tmp, desired.as_bytes().to_vec()[i]); 
-    }
-}
-
-fn write_password(path: String, hash: Vec<u8>, desired: String, type_e: Type) -> WriteRet{
-    let mut content;
-    match open_file(Path::new(&path)) {
-        None => {println!("Could not read {}", path); return WriteRet::ERROR;},
-        Some(c) => content = c,
-    }
-    write_chars(&mut content, hash.clone(), desired.clone(), type_e.clone());
-    if desired.as_bytes().to_vec() == get_chars(content.clone(), desired.len(), hash.clone(), type_e.clone()) {
-        let mut file = match File::options().write(true).open(Path::new(&path)) {
-            Ok(f) => f,
-            Err(e) => {println!("Could not open {:?}, error: {}", path, e); return WriteRet::ERROR},
-        };
-        match file.write_all(&content) {
-            Err(e) => {println!("Could not write to {:?}, error {}", path, e); return WriteRet::ERROR;},
-            _ => (),
-        }
-        match file.sync_data() {
-            Err(e) => {println!("Could not write to {:?}, error {}", path, e); return WriteRet::ERROR;},
-            _ => (),
-        }
-        match get_saved_password(path.clone(), desired.len(), hash, type_e) {
-            Some(c) => {
-                if desired == c{
-                    return WriteRet::SUCSSES;
-                } else {
-                    return WriteRet::FAIL;
-                }
-            },
-            None => {println!("Could not verify {:?}", path); return WriteRet::UNKNOWN;}
-        }
-    } else {
-        WriteRet::FAIL
-    }
 }
 
 fn get_length(arg: String) -> usize{
@@ -401,7 +442,7 @@ fn password_check(hash: Vec<String>, mut password: Vec<u8>) -> Vec<u8>{
                                             Err(e) => {println!("Could not read {}, error {} \n hash of password {}", path.display(), e, hashed); break;},
                                             _ => ()
                                         }
-                                         let mut to_write = String::new();
+                                        let mut to_write = String::new();
                                         if hash_content.len() == 0 || hash_content[hash_content.len()-1] == 32 {
                                             to_write = hashed.clone();
                                         } else {
@@ -451,7 +492,8 @@ fn main() {
     args.remove(0);
     if args.len() < 2{
         println!("not enough argument");
-        help()
+        help(); 
+        return;
     }
     loop {
         if args.len() == 0{
@@ -476,13 +518,19 @@ fn main() {
             "--old" => {type_e = Type::OLD; args.remove(0);}
             "-n" => {type_e = Type::NEW; args.remove(0);}
             "--new" => {type_e = Type::NEW; args.remove(0);}
-            _ => {println!("{} is unknown argument", args[0]); help()},
+            _ => {println!("{} is unknown argument", args[0]); help(); return;},
         }
     }
     if hash.len() == 0{
          hash = password_check(passwd_hash, hash.clone());
     }
-    match operation {
+    let mut passwd_vec = Vec::new();
+    for i in &paths {
+        passwd_vec.push(create_passwd_struct(&Path::new(&i), length, hash.clone(), type_e.clone(), operation.clone()));
+    }
+    
+    for mut i in passwd_vec {
+    /*match operation {
         Mode::READ => {
             for i in 0..paths.len() {
                 match get_saved_password(paths[i].clone(), length, hash.clone(), type_e.clone()) {
@@ -506,5 +554,7 @@ fn main() {
             }
         },
         _ => {println!("please enter valid mode"); help()},
+    }*/
+        i.get_done();
     }
 }
