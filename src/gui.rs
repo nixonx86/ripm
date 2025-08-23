@@ -1,4 +1,4 @@
-use iced::{widget::{button, column, pick_list, row, text, text_input, Toggler, image}};
+use iced::{widget::{button, column, pick_list, row, text, text_input, Toggler}};
 use iced::run;
 
 use std::path::Path;
@@ -30,6 +30,7 @@ struct App {
 impl App {
     fn update(&mut self, message: Message) {
         if self.master.len() == 0 {
+            self.old_e=true;
             match message {
                     Message::PasswordSubmited(s) => self.tmp = s,
                     Message::ButtonPressed => self.master = self.tmp.clone(),
@@ -39,7 +40,7 @@ impl App {
             for i in passwords {
                 let mut j = 0;
                 if self.master.len() != 0 {
-                    self.list.push(create_passwd_struct(&Path::new(&i.1), i.0, length, self.master.as_bytes().to_vec(), Type::NEW, Mode::READ));
+                    self.list.push(create_passwd_struct(&Path::new(&i.1), i.0, length, self.master.as_bytes().to_vec(), if self.old_e==true {Type::OLD} else {Type::NEW}, Mode::READ));
                     self.list[j].get_done();
                     j += 1;
                 }
@@ -47,7 +48,7 @@ impl App {
         } else {
             match message {
                 Message::EntrySelected(s) => {self.selected = Some(s.clone()); self.selected.as_mut().unwrap().get_done(); if self.old_e == true {self.selected.as_mut().unwrap().type_e = Type::NEW;} else {self.selected.as_mut().unwrap().type_e = Type::OLD;}},
-                Message::Update(b) => {self.old_e = b; if self.old_e == true {self.selected.as_mut().unwrap().type_e = Type::NEW;} else {self.selected.as_mut().unwrap().type_e = Type::OLD;} self.selected.as_mut().unwrap().password = None; self.selected.as_mut().unwrap().get_done(); println!("{:?}",self.selected.clone().unwrap());}
+                Message::Update(b) => {if self.selected != None {self.old_e = b; if self.old_e == true {self.selected.as_mut().unwrap().type_e = Type::NEW;} else {self.selected.as_mut().unwrap().type_e = Type::OLD;} self.selected.as_mut().unwrap().password = None; self.selected.as_mut().unwrap().get_done(); println!("{:?}",self.selected.clone().unwrap());} else {self.old_e=!self.old_e}}
                 _ => (),
             }
         }
@@ -79,7 +80,6 @@ impl App {
                     Some(_) => pass,
                 })],
                 Toggler::new(self.old_e).label("Newer encryption algorithm").on_toggle(|b| Message::Update(b)),
-                image(self.selected.clone().unwrap().path)
             ].into()
         }
     }
