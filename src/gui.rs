@@ -1,4 +1,4 @@
-use iced::{widget::{button, column, row, pick_list, text, text_input}, window::Icon, Settings};
+use iced::{widget::{button, column, pick_list, row, text, text_input, Toggler, image}};
 use iced::run;
 
 use std::path::Path;
@@ -14,6 +14,7 @@ enum Message {
     ButtonPressed,
     PasswordSubmited(String),
     EntrySelected(PasswordData),
+    Update(bool),
     Unset,
 }
 
@@ -22,7 +23,8 @@ struct App {
     master: String,
     list: Vec<PasswordData>,
     tmp: String,
-    selected: Option<PasswordData>
+    selected: Option<PasswordData>,
+    old_e: bool 
 }
 
 impl App {
@@ -44,7 +46,8 @@ impl App {
             }
         } else {
             match message {
-                Message::EntrySelected(s) => {self.selected = Some(s.clone()); self.selected.clone().unwrap().get_done(); println!("{:?}", self.selected.clone().unwrap().password);},
+                Message::EntrySelected(s) => {self.selected = Some(s.clone()); self.selected.as_mut().unwrap().get_done(); if self.old_e == true {self.selected.as_mut().unwrap().type_e = Type::NEW;} else {self.selected.as_mut().unwrap().type_e = Type::OLD;}},
+                Message::Update(b) => {self.old_e = b; if self.old_e == true {self.selected.as_mut().unwrap().type_e = Type::NEW;} else {self.selected.as_mut().unwrap().type_e = Type::OLD;} self.selected.as_mut().unwrap().password = None; self.selected.as_mut().unwrap().get_done(); println!("{:?}",self.selected.clone().unwrap());}
                 _ => (),
             }
         }
@@ -75,7 +78,8 @@ impl App {
                     None => " ".to_string(),
                     Some(_) => pass,
                 })],
-
+                Toggler::new(self.old_e).label("Newer encryption algorithm").on_toggle(|b| Message::Update(b)),
+                image(self.selected.clone().unwrap().path)
             ].into()
         }
     }

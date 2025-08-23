@@ -30,11 +30,11 @@ pub enum Type {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct PasswordData {
-    path: Box<Path>,
+    pub path: Box<Path>,
     pub name: String,
     length: usize,
     master_password: Vec<u8>,
-    type_e: Type,
+    pub type_e: Type,
     mode: Mode,
     pub password: Option<String>,
     content: Vec<u8>,
