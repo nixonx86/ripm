@@ -22,9 +22,7 @@ pub enum WriteRet {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Type {
-    #[cfg(feature = "old")]
     OLD,
-    #[cfg(feature = "new")]
     NEW
 }
 
@@ -32,7 +30,7 @@ pub enum Type {
 pub struct PasswordData {
     pub path: Box<Path>,
     pub name: String,
-    length: usize,
+    pub length: usize,
     master_password: Vec<u8>,
     pub type_e: Type,
     mode: Mode,
@@ -67,7 +65,6 @@ impl PasswordData {
                 ret += self.master_password[i] as u64;
             }
             ret.try_into().unwrap()};
-        #[cfg(feature = "new")]
         match self.type_e {
             Type::NEW => tmp = tmp + self.length,
             _ => (),
@@ -177,7 +174,6 @@ impl PasswordData {
                 ret += self.master_password[i] as u64;
             }
             ret.try_into().unwrap()};
-        #[cfg(feature = "new")]
         match self.type_e {
             Type::NEW => tmp = tmp + self.length,
             _ => (),
@@ -269,7 +265,7 @@ pub fn get_length(arg: String) -> usize{
     let length_result: std::result::Result<usize, std::num::ParseIntError> = arg.trim().parse();
     match length_result {
         Ok(len) => return len,
-        _ => {println!("not valid length"); help(); return usize::min_value();},
+        _ => {println!("not valid length"); help(); return 8;},
     };
 }
 

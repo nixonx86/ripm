@@ -1,7 +1,6 @@
 use crate::utils::*;
 use std::path::Path;
 use std::io::{self, prelude::*};
-use iced::widget::shader::wgpu::core::device::queue;
 use rpassword::read_password;
 use std::env;
 
@@ -14,9 +13,6 @@ pub fn cli() {
     let mut paths: Vec<String> = Vec::new();
     let mut hash: Vec<u8> = vec![];
     let mut operation: Mode = Mode::UNSET;
-    #[cfg(feature = "old")]
-    let mut type_e = Type::OLD;
-    #[cfg(feature = "new")]
     let mut type_e = Type::NEW;
     args.remove(0);
     if args.len() < 2{
